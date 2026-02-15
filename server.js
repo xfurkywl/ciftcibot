@@ -170,41 +170,51 @@ function baslatBot() {
         }
     });
     
-    // 5-10 DAKİKA ARASI RASTGELE DÖNGÜ - GÜNCELLENMIŞ VERSİYON
+    // 5-10 DAKİKA ARASI RASTGELE DÖNGÜ - GÜVENLİ VERSİYON
     function baslatCiftciDongusu() {
-        if (!botCalisiyorMu || donguAktif) return; // Döngü zaten aktifse çık
+        if (!botCalisiyorMu || donguAktif) {
+            logEkle('⚠️ Döngü zaten aktif veya bot durmuş, yeni döngü başlatılmadı', 'warning');
+            return;
+        }
         
         // Son işlemden bu yana yeterli süre geçti mi kontrol et
         const simdikiZaman = Date.now();
         const gecenSure = simdikiZaman - sonIslemSuresi;
         
         if (sonIslemSuresi > 0 && gecenSure < 4 * 60 * 1000) { // 4 dakikadan az geçtiyse
-            logEkle(`⚠️ Çok erken! Son işlemden ${(gecenSure/60000).toFixed(1)} dakika geçti. İptal ediliyor.`, 'warning');
+            logEkle(`⚠️ Çok erken! Son işlemden sadece ${(gecenSure/60000).toFixed(1)} dakika geçti. Minimum 4 dakika beklenmeli. İptal ediliyor.`, 'warning');
             return;
         }
         
         donguAktif = true; // Döngüyü kilitle
         
-        const min = 5 * 60 * 1000;  // 5 dakika
-        const max = 10 * 60 * 1000; // 10 dakika
+        const min = 5 * 60 * 1000;  // 5 dakika (300000 ms)
+        const max = 10 * 60 * 1000; // 10 dakika (600000 ms)
         const rastgeleSure = Math.floor(Math.random() * (max - min + 1)) + min;
         
         const dakika = (rastgeleSure / 60000).toFixed(2);
-        const sonrakiZaman = new Date(Date.now() + rastgeleSure).toLocaleTimeString('tr-TR');
-        logEkle(`⏰ Sonraki işlem ${dakika} dakika sonra (${sonrakiZaman})`, 'info');
+        const sonrakiZaman = new Date(Date.now() + rastgeleSure);
+        const saatDakika = sonrakiZaman.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+        
+        logEkle(`⏰ Sonraki işlem ${dakika} dakika sonra (${saatDakika})`, 'info');
         
         setTimeout(() => {
             if (!botCalisiyorMu) {
+                logEkle('⚠️ Bot durdurulmuş, işlem iptal edildi', 'warning');
                 donguAktif = false;
                 return;
             }
             
-            sonIslemSuresi = Date.now(); // Şu anki zamanı kaydet
+            sonIslemSuresi = Date.now(); // İşlem zamanını kaydet
             logEkle('🌾 Çiftçi menüsü açılıyor...', 'info');
             bot.chat('/çiftçi');
             
-            donguAktif = false; // Bir sonraki döngüye izin ver
-            baslatCiftciDongusu(); // Yeni döngü başlat
+            // Döngüyü serbest bırak ve yeni döngüyü başlat
+            setTimeout(() => {
+                donguAktif = false;
+                baslatCiftciDongusu();
+            }, 3000); // Menü açılması için 3 saniye bekle
+            
         }, rastgeleSure);
     }
     
@@ -232,16 +242,21 @@ function baslatBot() {
                             bot.chat('/çiftçi');
                             botDurumu = 'Aktif - Çalışıyor';
                             logEkle('🚀 Bot aktif! Otomasyon başladı.', 'success');
+                            sonIslemSuresi = Date.now(); // İlk işlem zamanını kaydet
                             durumGuncelle();
                             
-                            baslatCiftciDongusu(); // Sadece ilk spawn'da başlat
+                            // İlk döngüyü başlat
+                            setTimeout(() => {
+                                donguAktif = false; // Flag'i sıfırla
+                                baslatCiftciDongusu();
+                            }, 5000);
                         }, 5000);
                     }, 8000);
                 }, 5000);
             }, 3000);
         } else {
-            // Sonraki spawn'lar için sadece log
-            logEkle('📍 Konum değişti (spawn event)', 'info');
+            // Sonraki spawn'lar (TP, ada değişimi vs.) - Döngüyü yeniden başlatma
+            logEkle('📍 Konum değişti (spawn event) - Döngü devam ediyor', 'info');
         }
     });
     
@@ -252,7 +267,7 @@ function baslatBot() {
         setTimeout(async () => {
             try {
                 await bot.clickWindow(targetSlot, 1, 1);
-                logEkle('🖱️ Kaktüse tıklandı', 'success');
+                logEkle('🖱️ Slot 24\'e tıklandı (Kaktüs)', 'success');
                 
                 setTimeout(() => {
                     bot.closeWindow(window);
@@ -309,6 +324,7 @@ server.listen(PORT, '0.0.0.0', () => {
 🌐 Web Panel: http://localhost:${PORT}
 🤖 Bot: ${BOT_ADI}
 🖥️ Sunucu: ${SUNUCU_IP}
+⏱️  İşlem Aralığı: 5-10 dakika
     `);
     
     logEkle('🌐 Web sunucusu başlatıldı', 'success');
