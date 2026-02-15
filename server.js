@@ -172,8 +172,8 @@ function baslatBot() {
   function baslatCiftciDongusu() {
     if (!botCalisiyorMu) return;
     
-    const min = 13 * 60 * 1000;
-    const max = 15 * 60 * 1000;
+    const min = 5 * 60 * 1000;
+    const max = 10 * 60 * 1000;
     const rastgeleSure = Math.floor(Math.random() * (max - min + 1)) + min;
     
     logEkle(`⏰ Sonraki işlem ${(rastgeleSure/60000).toFixed(2)} dakika sonra`, 'info');
