@@ -22,8 +22,8 @@ let islemSayisi = 0;
 let sonIslemZamani = null;
 let loglar = [];
 let botCalisiyorMu = false;
-let donguAktif = false; // YENİ: Döngü kontrolü için flag
-let sonIslemSuresi = 0; // YENİ: Son işlem zamanını takip et
+let donguTimeout = null; // DÜZELTME: Timeout referansını tutmak için
+let sonIslemSuresi = 0;
 
 // Static dosyaları serve et
 app.use(express.static(path.join(__dirname, 'public')));
@@ -170,26 +170,22 @@ function baslatBot() {
         }
     });
     
-    // 5-10 DAKİKA ARASI RASTGELE DÖNGÜ - GÜVENLİ VERSİYON
+    // DÜZELTME: Döngü fonksiyonu tamamen yeniden yazıldı
     function baslatCiftciDongusu() {
-        if (!botCalisiyorMu || donguAktif) {
-            logEkle('⚠️ Döngü zaten aktif veya bot durmuş, yeni döngü başlatılmadı', 'warning');
+        // Bot durdurulmuşsa döngüyü başlatma
+        if (!botCalisiyorMu) {
+            logEkle('⚠️ Bot durmuş, döngü başlatılmadı', 'warning');
             return;
         }
         
-        // Son işlemden bu yana yeterli süre geçti mi kontrol et
-        const simdikiZaman = Date.now();
-        const gecenSure = simdikiZaman - sonIslemSuresi;
-        
-        if (sonIslemSuresi > 0 && gecenSure < 4 * 60 * 1000) { // 4 dakikadan az geçtiyse
-            logEkle(`⚠️ Çok erken! Son işlemden sadece ${(gecenSure/60000).toFixed(1)} dakika geçti. Minimum 4 dakika beklenmeli. İptal ediliyor.`, 'warning');
-            return;
+        // Önceki timeout varsa iptal et
+        if (donguTimeout) {
+            clearTimeout(donguTimeout);
+            donguTimeout = null;
         }
         
-        donguAktif = true; // Döngüyü kilitle
-        
-        const min = 5 * 60 * 1000;  // 5 dakika (300000 ms)
-        const max = 10 * 60 * 1000; // 10 dakika (600000 ms)
+        const min = 5 * 60 * 1000;  // 5 dakika
+        const max = 10 * 60 * 1000; // 10 dakika
         const rastgeleSure = Math.floor(Math.random() * (max - min + 1)) + min;
         
         const dakika = (rastgeleSure / 60000).toFixed(2);
@@ -198,27 +194,26 @@ function baslatBot() {
         
         logEkle(`⏰ Sonraki işlem ${dakika} dakika sonra (${saatDakika})`, 'info');
         
-        setTimeout(() => {
+        donguTimeout = setTimeout(() => {
+            // Bot hala çalışıyor mu kontrol et
             if (!botCalisiyorMu) {
                 logEkle('⚠️ Bot durdurulmuş, işlem iptal edildi', 'warning');
-                donguAktif = false;
                 return;
             }
             
-            sonIslemSuresi = Date.now(); // İşlem zamanını kaydet
+            sonIslemSuresi = Date.now();
             logEkle('🌾 Çiftçi menüsü açılıyor...', 'info');
             bot.chat('/çiftçi');
             
-            // Döngüyü serbest bırak ve yeni döngüyü başlat
+            // Bir sonraki döngüyü planla (menü işlemi bittikten sonra)
             setTimeout(() => {
-                donguAktif = false;
-                baslatCiftciDongusu();
-            }, 3000); // Menü açılması için 3 saniye bekle
+                baslatCiftciDongusu(); // DÜZELTME: Yeni döngüyü başlat
+            }, 5000); // Menü işlemleri için 5 saniye bekle
             
         }, rastgeleSure);
     }
     
-    // GİRİŞ VE BAĞLANTI - GÜNCELLENMIŞ
+    // GİRİŞ VE BAĞLANTI
     bot.on('spawn', () => {
         if (isFirstSpawn) {
             isFirstSpawn = false;
@@ -242,12 +237,11 @@ function baslatBot() {
                             bot.chat('/çiftçi');
                             botDurumu = 'Aktif - Çalışıyor';
                             logEkle('🚀 Bot aktif! Otomasyon başladı.', 'success');
-                            sonIslemSuresi = Date.now(); // İlk işlem zamanını kaydet
+                            sonIslemSuresi = Date.now();
                             durumGuncelle();
                             
-                            // İlk döngüyü başlat
+                            // DÜZELTME: İlk döngüyü başlat (ilk menü kapandıktan sonra)
                             setTimeout(() => {
-                                donguAktif = false; // Flag'i sıfırla
                                 baslatCiftciDongusu();
                             }, 5000);
                         }, 5000);
@@ -255,8 +249,8 @@ function baslatBot() {
                 }, 5000);
             }, 3000);
         } else {
-            // Sonraki spawn'lar (TP, ada değişimi vs.) - Döngüyü yeniden başlatma
-            logEkle('📍 Konum değişti (spawn event) - Döngü devam ediyor', 'info');
+            // Sonraki spawn'lar
+            logEkle('📍 Konum değişti (spawn event)', 'info');
         }
     });
     
@@ -288,7 +282,7 @@ function baslatBot() {
         logEkle(`⚠️ Sunucudan atıldı: ${reason}`, 'error');
         botDurumu = 'Atıldı';
         botCalisiyorMu = false;
-        donguAktif = false;
+        if (donguTimeout) clearTimeout(donguTimeout);
         durumGuncelle();
     });
     
@@ -296,7 +290,7 @@ function baslatBot() {
         logEkle('🔌 Bot bağlantısı kesildi', 'warning');
         botDurumu = 'Çevrimdışı';
         botCalisiyorMu = false;
-        donguAktif = false;
+        if (donguTimeout) clearTimeout(donguTimeout);
         durumGuncelle();
     });
 }
@@ -306,9 +300,15 @@ function durdurBot() {
         bot.quit();
         bot = null;
     }
+    
+    // DÜZELTME: Timeout'u iptal et
+    if (donguTimeout) {
+        clearTimeout(donguTimeout);
+        donguTimeout = null;
+    }
+    
     botCalisiyorMu = false;
-    donguAktif = false; // Flag'i sıfırla
-    sonIslemSuresi = 0; // Zaman sayacını sıfırla
+    sonIslemSuresi = 0;
     botDurumu = 'Durduruldu';
     logEkle('⏹️ Bot durduruldu', 'warning');
     durumGuncelle();
