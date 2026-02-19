@@ -122,7 +122,7 @@ function zamanlanmisYenidenBaglan() {
         try {
             bot.removeAllListeners();
             bot.quit();
-        } catch (e) { /* sessizce geç */ }
+        } catch (e) { }
         bot = null;
     }
 
@@ -296,37 +296,30 @@ function baslatBot() {
     });
 
     // ============================================================
-    // DÜZELTME: windowOpen — kick nedenini bulmak için debug ekle,
-    //           closeWindow kaldırıldı (anti-cheat tetikliyordu),
-    //           pencere başlığı kontrol ediliyor
+    // ANA DÜZELTME: Raw packet ile shift+sağ tık
     // ============================================================
     bot.on('windowOpen', async (window) => {
-        // DEBUG: Pencere bilgisini logla (kick nedenini bulmak için)
+        // DEBUG: Her açılan pencerenin bilgisini logla
         logEkle(`🪟 Pencere açıldı — Başlık: "${window.title}" | Tip: ${window.type} | Slot sayısı: ${window.slots.length}`, 'info');
 
         if (menuIslemde) {
             logEkle('⏳ Menü zaten işlemde, bu pencere atlanıyor...', 'warning');
-            bot.closeWindow(window);
             return;
         }
 
-        // Sadece çiftçi menüsünü işle (başlık kontrolü)
+        // Sadece çiftçi menüsünü işle
         const baslik = window.title ? window.title.toLowerCase() : '';
         const ciftciMenusu = baslik.includes('çiftçi') || baslik.includes('ciftci') || baslik.includes('farmer');
 
         if (!ciftciMenusu) {
             logEkle(`⏭️ Çiftçi menüsü değil, atlanıyor: "${window.title}"`, 'warning');
-            // Beklenmeyen pencereleri kapat
-            setTimeout(() => {
-                try { bot.closeWindow(window); } catch(e) {}
-            }, 500);
             return;
         }
 
         menuIslemde = true;
         const targetSlot = 24;
 
-        // İnsan gibi davranmak için rastgele gecikme (4-7 saniye)
+        // İnsan gibi rastgele gecikme (4-7 saniye)
         const rastgeleGecikme = Math.floor(Math.random() * 3000) + 4000;
         logEkle(`⏳ Çiftçi menüsü açıldı, ${(rastgeleGecikme / 1000).toFixed(1)}sn sonra tıklanacak...`, 'info');
 
@@ -337,31 +330,44 @@ function baslatBot() {
             }
 
             try {
-                // Pencere hala açık mı kontrol et
+                // Pencere hala açık mı?
                 if (!bot.currentWindow || bot.currentWindow.id !== window.id) {
                     logEkle('⚠️ Pencere kapanmış, tıklama iptal edildi', 'warning');
                     menuIslemde = false;
                     return;
                 }
 
-                // Slot 24 var mı kontrol et
+                // Slot dolu mu?
                 const slot = window.slots[targetSlot];
                 if (!slot || slot.type === -1) {
                     logEkle(`⚠️ Slot ${targetSlot} boş, tıklama iptal edildi`, 'warning');
                     menuIslemde = false;
-                    try { bot.closeWindow(window); } catch(e) {}
                     return;
                 }
 
                 logEkle(`🎯 Slot ${targetSlot} içeriği: ${slot.name || slot.type}`, 'info');
 
-                // Shift + sağ tık: button=1, mode=1
-                await bot.clickWindow(targetSlot, 1, 1);
-                logEkle(`🖱️ Slot ${targetSlot}'e tıklandı (Kaktüs) [shift+sağ tık]`, 'success');
+                // -----------------------------------------------
+                // RAW PACKET ile shift+sağ tık
+                // Mineflayer'ın clickWindow'u yerine direkt protokol paketi
+                // -----------------------------------------------
+                const stateId = window.stateId || 0;
 
-                // Tıklamadan sonra sunucunun işlemesi için bekle
-                // closeWindow KULLANMA — sunucu kendisi kapatsın
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                bot._client.write('window_click', {
+                    windowId: window.id,
+                    stateId: stateId,
+                    slot: targetSlot,
+                    mouseButton: 1,       // sağ tık
+                    mode: 1,              // shift modu
+                    changedSlotsCount: 0,
+                    changedSlots: [],
+                    cursorItem: { present: false }
+                });
+
+                logEkle(`🖱️ RAW paket gönderildi — Slot ${targetSlot} [shift+sağ tık]`, 'success');
+
+                // Sunucunun işlemesi için bekle — pencereyi biz kapatmıyoruz
+                await new Promise(resolve => setTimeout(resolve, 3000));
 
                 menuIslemde = false;
                 logEkle('✅ Menü işlemi tamamlandı, kilit açıldı', 'info');
@@ -389,13 +395,12 @@ function baslatBot() {
     });
 
     bot.on('kicked', (reason) => {
-        // RAW kick nedenini logla (debug için kritik!)
         logEkle(`⚠️ Sunucudan atıldı (RAW): ${JSON.stringify(reason)}`, 'error');
         botDurumu = 'Atıldı - Yeniden bağlanılacak...';
         botCalisiyorMu = false;
         menuIslemde = false;
         if (donguTimeout) clearTimeout(donguTimeout);
-        try { bot.removeAllListeners(); } catch(e) {}
+        try { bot.removeAllListeners(); } catch (e) { }
         durumGuncelle();
         zamanlanmisYenidenBaglan();
     });
@@ -406,7 +411,7 @@ function baslatBot() {
         botCalisiyorMu = false;
         menuIslemde = false;
         if (donguTimeout) clearTimeout(donguTimeout);
-        try { bot.removeAllListeners(); } catch(e) {}
+        try { bot.removeAllListeners(); } catch (e) { }
         durumGuncelle();
         zamanlanmisYenidenBaglan();
     });
@@ -420,7 +425,7 @@ function durdurBot() {
     }
 
     if (bot) {
-        try { bot.quit(); } catch(e) {}
+        try { bot.quit(); } catch (e) { }
         bot = null;
     }
 
