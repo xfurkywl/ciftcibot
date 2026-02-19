@@ -24,20 +24,17 @@ let loglar = [];
 let botCalisiyorMu = false;
 let donguTimeout = null;
 let sonIslemSuresi = 0;
-let menuIslemde = false; // DÜZELTME: Menü kilidi
-let yenidenBaglanTimeout = null; // Reconnect timeout
-let yenidenBaglanAktif = false;  // Reconnect döngüsü aktif mi
+let menuIslemde = false;
+let yenidenBaglanTimeout = null;
+let yenidenBaglanAktif = false;
 
-// Static dosyaları serve et
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
-// Ana sayfa
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// API endpoint'leri
 app.get('/api/status', (req, res) => {
     res.json({
         durum: botDurumu,
@@ -80,10 +77,8 @@ app.post('/api/command', (req, res) => {
     res.json({ success: true, message: 'Komut gönderildi!' });
 });
 
-// Socket.IO bağlantıları
 io.on('connection', (socket) => {
     console.log('Yeni istemci bağlandı');
-
     socket.emit('status', {
         durum: botDurumu,
         toplamKazanc,
@@ -91,9 +86,7 @@ io.on('connection', (socket) => {
         sonIslemZamani,
         aktif: botCalisiyorMu
     });
-
     socket.emit('logs', loglar.slice(-50));
-
     socket.on('disconnect', () => {
         console.log('İstemci bağlantısı kesildi');
     });
@@ -103,11 +96,9 @@ function logEkle(mesaj, tip = 'info') {
     const zaman = new Date().toLocaleString('tr-TR');
     const logObjesi = { zaman, mesaj, tip };
     loglar.push(logObjesi);
-
     if (loglar.length > 500) {
         loglar = loglar.slice(-500);
     }
-
     console.log(`[${zaman}] ${mesaj}`);
     io.emit('newLog', logObjesi);
 }
@@ -124,11 +115,9 @@ function durumGuncelle() {
 }
 
 function zamanlanmisYenidenBaglan() {
-    // Zaten reconnect döngüsündeyse tekrar başlatma
     if (yenidenBaglanAktif) return;
     yenidenBaglanAktif = true;
 
-    // Eski bot instance'ını tamamen temizle
     if (bot) {
         try {
             bot.removeAllListeners();
@@ -154,14 +143,12 @@ function zamanlanmisYenidenBaglan() {
         botDurumu = `Yeniden bağlanıyor... (Deneme #${deneme})`;
         durumGuncelle();
 
-        // 15 saniye bekle, SONRA bağlan
         yenidenBaglanTimeout = setTimeout(() => {
             if (!yenidenBaglanAktif) return;
 
             logEkle(`🔌 Bağlantı kuruluyor... (Deneme #${deneme})`, 'info');
             baslatBot();
 
-            // 20 saniye içinde bağlanamazsa tekrar dene
             yenidenBaglanTimeout = setTimeout(() => {
                 if (!botCalisiyorMu && yenidenBaglanAktif) {
                     deneme++;
@@ -192,15 +179,12 @@ function baslatBot() {
 
     let isFirstSpawn = true;
 
-    // SOHBET TAKİBİ
     bot.on('message', (message) => {
         const msg = message.toString();
-
         if (msg.trim().length > 0) {
             logEkle(`💬 ${msg}`, 'chat');
         }
 
-        // Satış mesajını yakala
         if (msg.includes('Ürünler') && msg.includes('dinar karşılığında satıldı')) {
             const mesajIcerigi = msg.split('Ürünler')[1];
             const miktarEslesmesi = mesajIcerigi.match(/\d+([,.]\d+)?/);
@@ -214,19 +198,17 @@ function baslatBot() {
                     islemSayisi++;
                     sonIslemZamani = new Date().toLocaleString('tr-TR');
 
-                    // DÜZELTME: Deposit gecikmesi artırıldı (anti-cheat için)
                     setTimeout(() => {
                         if (!botCalisiyorMu) return;
                         logEkle(`💰 Kazanç: ${tamSayiKazanc} dinar - Yatırılıyor...`, 'success');
                         bot.chat(`/is deposit ${tamSayiKazanc}`);
                         durumGuncelle();
-                    }, 3000); // 1500 → 3000ms
+                    }, 3000);
                 }
             }
         }
     });
 
-    // DÖNGÜ FONKSİYONU
     function baslatCiftciDongusu() {
         if (!botCalisiyorMu) {
             logEkle('⚠️ Bot durmuş, döngü başlatılmadı', 'warning');
@@ -238,11 +220,9 @@ function baslatBot() {
             donguTimeout = null;
         }
 
-        // DÜZELTME: Süre 10-15 dakikaya çıkarıldı (anti-cheat için)
         const min = 10 * 60 * 1000;
         const max = 15 * 60 * 1000;
         const rastgeleSure = Math.floor(Math.random() * (max - min + 1)) + min;
-
         const dakika = (rastgeleSure / 60000).toFixed(2);
         const sonrakiZaman = new Date(Date.now() + rastgeleSure);
         const saatDakika = sonrakiZaman.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
@@ -259,19 +239,16 @@ function baslatBot() {
             logEkle('🌾 Çiftçi menüsü açılıyor...', 'info');
             bot.chat('/çiftçi');
 
-            // DÜZELTME: Sonraki döngü gecikmesi artırıldı
             setTimeout(() => {
                 baslatCiftciDongusu();
-            }, 8000); // 5000 → 8000ms
+            }, 8000);
 
         }, rastgeleSure);
     }
 
-    // GİRİŞ VE BAĞLANTI
     bot.on('spawn', () => {
         if (isFirstSpawn) {
             isFirstSpawn = false;
-            // Başarıyla bağlandı, reconnect döngüsünü iptal et
             yenidenBaglanAktif = false;
             if (yenidenBaglanTimeout) {
                 clearTimeout(yenidenBaglanTimeout);
@@ -281,7 +258,6 @@ function baslatBot() {
             logEkle('✅ Sunucuya bağlanıldı!', 'success');
             durumGuncelle();
 
-            // DÜZELTME: Tüm komut gecikmeleri artırıldı (anti-cheat için)
             setTimeout(() => {
                 if (!botCalisiyorMu) return;
                 bot.chat(`/login ${SIFRE}`);
@@ -307,22 +283,43 @@ function baslatBot() {
 
                             setTimeout(() => {
                                 baslatCiftciDongusu();
-                            }, 8000); // 5000 → 8000ms
+                            }, 8000);
 
-                        }, 18000); // 5000 → 18000ms
-                    }, 12000);    // 8000 → 12000ms
-                }, 8000);         // 5000 → 8000ms
-            }, 5000);             // 3000 → 5000ms
+                        }, 18000);
+                    }, 12000);
+                }, 8000);
+            }, 5000);
 
         } else {
             logEkle('📍 Konum değişti (spawn event)', 'info');
         }
     });
 
-    // MENÜ TIKLAMA - Kilit mekanizması + shift+sağ tık
+    // ============================================================
+    // DÜZELTME: windowOpen — kick nedenini bulmak için debug ekle,
+    //           closeWindow kaldırıldı (anti-cheat tetikliyordu),
+    //           pencere başlığı kontrol ediliyor
+    // ============================================================
     bot.on('windowOpen', async (window) => {
+        // DEBUG: Pencere bilgisini logla (kick nedenini bulmak için)
+        logEkle(`🪟 Pencere açıldı — Başlık: "${window.title}" | Tip: ${window.type} | Slot sayısı: ${window.slots.length}`, 'info');
+
         if (menuIslemde) {
-            logEkle('⏳ Menü zaten işlemde, bekleniyor...', 'warning');
+            logEkle('⏳ Menü zaten işlemde, bu pencere atlanıyor...', 'warning');
+            bot.closeWindow(window);
+            return;
+        }
+
+        // Sadece çiftçi menüsünü işle (başlık kontrolü)
+        const baslik = window.title ? window.title.toLowerCase() : '';
+        const ciftciMenusu = baslik.includes('çiftçi') || baslik.includes('ciftci') || baslik.includes('farmer');
+
+        if (!ciftciMenusu) {
+            logEkle(`⏭️ Çiftçi menüsü değil, atlanıyor: "${window.title}"`, 'warning');
+            // Beklenmeyen pencereleri kapat
+            setTimeout(() => {
+                try { bot.closeWindow(window); } catch(e) {}
+            }, 500);
             return;
         }
 
@@ -331,7 +328,7 @@ function baslatBot() {
 
         // İnsan gibi davranmak için rastgele gecikme (4-7 saniye)
         const rastgeleGecikme = Math.floor(Math.random() * 3000) + 4000;
-        logEkle(`⏳ Menü açıldı, ${(rastgeleGecikme/1000).toFixed(1)}sn sonra tıklanacak...`, 'info');
+        logEkle(`⏳ Çiftçi menüsü açıldı, ${(rastgeleGecikme / 1000).toFixed(1)}sn sonra tıklanacak...`, 'info');
 
         setTimeout(async () => {
             if (!botCalisiyorMu) {
@@ -340,31 +337,48 @@ function baslatBot() {
             }
 
             try {
-                // Shift + sağ tık: mode=1, button=1
+                // Pencere hala açık mı kontrol et
+                if (!bot.currentWindow || bot.currentWindow.id !== window.id) {
+                    logEkle('⚠️ Pencere kapanmış, tıklama iptal edildi', 'warning');
+                    menuIslemde = false;
+                    return;
+                }
+
+                // Slot 24 var mı kontrol et
+                const slot = window.slots[targetSlot];
+                if (!slot || slot.type === -1) {
+                    logEkle(`⚠️ Slot ${targetSlot} boş, tıklama iptal edildi`, 'warning');
+                    menuIslemde = false;
+                    try { bot.closeWindow(window); } catch(e) {}
+                    return;
+                }
+
+                logEkle(`🎯 Slot ${targetSlot} içeriği: ${slot.name || slot.type}`, 'info');
+
+                // Shift + sağ tık: button=1, mode=1
                 await bot.clickWindow(targetSlot, 1, 1);
-                logEkle('🖱️ Slot 24\'e tıklandı (Kaktüs) [shift+sağ tık]', 'success');
+                logEkle(`🖱️ Slot ${targetSlot}'e tıklandı (Kaktüs) [shift+sağ tık]`, 'success');
 
-                // Tıklamadan sonra rastgele bekle (2-4 saniye)
-                const kapatmaGecikmesi = Math.floor(Math.random() * 2000) + 2000;
-                setTimeout(() => {
-                    if (!botCalisiyorMu) {
-                        menuIslemde = false;
-                        return;
-                    }
-                    bot.closeWindow(window);
+                // Tıklamadan sonra sunucunun işlemesi için bekle
+                // closeWindow KULLANMA — sunucu kendisi kapatsın
+                await new Promise(resolve => setTimeout(resolve, 2000));
 
-                    setTimeout(() => {
-                        menuIslemde = false;
-                        logEkle('✅ Menü işlemi tamamlandı, kilit açıldı', 'info');
-                    }, 3000);
-
-                }, kapatmaGecikmesi);
+                menuIslemde = false;
+                logEkle('✅ Menü işlemi tamamlandı, kilit açıldı', 'info');
 
             } catch (err) {
                 logEkle(`❌ Tıklama hatası: ${err.message}`, 'error');
                 menuIslemde = false;
             }
         }, rastgeleGecikme);
+    });
+
+    // Pencere kapandığında kilidi serbest bırak
+    bot.on('windowClose', () => {
+        if (menuIslemde) {
+            logEkle('🔓 Pencere kapandı, kilit açılıyor...', 'info');
+            menuIslemde = false;
+        }
     });
 
     bot.on('error', (err) => {
@@ -375,30 +389,30 @@ function baslatBot() {
     });
 
     bot.on('kicked', (reason) => {
-        logEkle(`⚠️ Sunucudan atıldı: ${reason}`, 'error');
+        // RAW kick nedenini logla (debug için kritik!)
+        logEkle(`⚠️ Sunucudan atıldı (RAW): ${JSON.stringify(reason)}`, 'error');
         botDurumu = 'Atıldı - Yeniden bağlanılacak...';
         botCalisiyorMu = false;
         menuIslemde = false;
         if (donguTimeout) clearTimeout(donguTimeout);
-        bot.removeAllListeners(); // Eski listener'ları temizle
+        try { bot.removeAllListeners(); } catch(e) {}
         durumGuncelle();
         zamanlanmisYenidenBaglan();
     });
 
-    bot.on('end', () => {
-        logEkle('🔌 Bot bağlantısı kesildi', 'warning');
+    bot.on('end', (reason) => {
+        logEkle(`🔌 Bot bağlantısı kesildi${reason ? ' — Neden: ' + reason : ''}`, 'warning');
         botDurumu = 'Çevrimdışı - Yeniden bağlanılacak...';
         botCalisiyorMu = false;
         menuIslemde = false;
         if (donguTimeout) clearTimeout(donguTimeout);
-        bot.removeAllListeners(); // Eski listener'ları temizle
+        try { bot.removeAllListeners(); } catch(e) {}
         durumGuncelle();
         zamanlanmisYenidenBaglan();
     });
 }
 
 function durdurBot() {
-    // Reconnect döngüsünü durdur
     yenidenBaglanAktif = false;
     if (yenidenBaglanTimeout) {
         clearTimeout(yenidenBaglanTimeout);
@@ -406,7 +420,7 @@ function durdurBot() {
     }
 
     if (bot) {
-        bot.quit();
+        try { bot.quit(); } catch(e) {}
         bot = null;
     }
 
@@ -423,7 +437,6 @@ function durdurBot() {
     durumGuncelle();
 }
 
-// Sunucu başlatma
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔═══════════════════════════════════════╗
@@ -445,7 +458,6 @@ server.listen(PORT, '0.0.0.0', () => {
     }
 });
 
-// Graceful shutdown
 process.on('SIGTERM', () => {
     console.log('SIGTERM sinyali alındı, bot durduruluyor...');
     durdurBot();
