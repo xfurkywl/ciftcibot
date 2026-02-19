@@ -128,28 +128,47 @@ function zamanlanmisYenidenBaglan() {
     if (yenidenBaglanAktif) return;
     yenidenBaglanAktif = true;
 
+    // Eski bot instance'ını tamamen temizle
+    if (bot) {
+        try {
+            bot.removeAllListeners();
+            bot.quit();
+        } catch (e) { /* sessizce geç */ }
+        bot = null;
+    }
+
+    if (donguTimeout) {
+        clearTimeout(donguTimeout);
+        donguTimeout = null;
+    }
+
+    menuIslemde = false;
+    botCalisiyorMu = false;
+
     let deneme = 1;
 
     function dene() {
         if (!yenidenBaglanAktif) return;
 
-        logEkle(`🔄 Yeniden bağlanma denemesi #${deneme} (15 saniyede bir)...`, 'warning');
+        logEkle(`🔄 Yeniden bağlanma denemesi #${deneme} - 15 saniye bekleniyor...`, 'warning');
         botDurumu = `Yeniden bağlanıyor... (Deneme #${deneme})`;
         durumGuncelle();
 
-        baslatBot();
-
-        // Bot başarıyla bağlandıysa (spawn event'i tetiklenince botCalisiyorMu true olur)
-        // Başarısız olursa 15 saniye sonra tekrar dene
+        // 15 saniye bekle, SONRA bağlan
         yenidenBaglanTimeout = setTimeout(() => {
-            if (!botCalisiyorMu) {
-                deneme++;
-                dene();
-            } else {
-                // Başarıyla bağlandı
-                yenidenBaglanAktif = false;
-                logEkle('✅ Yeniden bağlantı başarılı!', 'success');
-            }
+            if (!yenidenBaglanAktif) return;
+
+            logEkle(`🔌 Bağlantı kuruluyor... (Deneme #${deneme})`, 'info');
+            baslatBot();
+
+            // 20 saniye içinde bağlanamazsa tekrar dene
+            yenidenBaglanTimeout = setTimeout(() => {
+                if (!botCalisiyorMu && yenidenBaglanAktif) {
+                    deneme++;
+                    dene();
+                }
+            }, 20000);
+
         }, 15000);
     }
 
@@ -300,9 +319,8 @@ function baslatBot() {
         }
     });
 
-    // MENÜ TIKLAMA - DÜZELTME: Kilit mekanizması eklendi
+    // MENÜ TIKLAMA - Kilit mekanizması + shift+sağ tık
     bot.on('windowOpen', async (window) => {
-        // Zaten işlem yapılıyorsa yeni tıklama yapma
         if (menuIslemde) {
             logEkle('⏳ Menü zaten işlemde, bekleniyor...', 'warning');
             return;
@@ -311,7 +329,10 @@ function baslatBot() {
         menuIslemde = true;
         const targetSlot = 24;
 
-        // DÜZELTME: Tıklama gecikmesi artırıldı
+        // İnsan gibi davranmak için rastgele gecikme (4-7 saniye)
+        const rastgeleGecikme = Math.floor(Math.random() * 3000) + 4000;
+        logEkle(`⏳ Menü açıldı, ${(rastgeleGecikme/1000).toFixed(1)}sn sonra tıklanacak...`, 'info');
+
         setTimeout(async () => {
             if (!botCalisiyorMu) {
                 menuIslemde = false;
@@ -319,10 +340,12 @@ function baslatBot() {
             }
 
             try {
+                // Shift + sağ tık: mode=1, button=1
                 await bot.clickWindow(targetSlot, 1, 1);
-                logEkle('🖱️ Slot 24\'e tıklandı (Kaktüs)', 'success');
+                logEkle('🖱️ Slot 24\'e tıklandı (Kaktüs) [shift+sağ tık]', 'success');
 
-                // DÜZELTME: Kapatma gecikmesi artırıldı
+                // Tıklamadan sonra rastgele bekle (2-4 saniye)
+                const kapatmaGecikmesi = Math.floor(Math.random() * 2000) + 2000;
                 setTimeout(() => {
                     if (!botCalisiyorMu) {
                         menuIslemde = false;
@@ -330,19 +353,18 @@ function baslatBot() {
                     }
                     bot.closeWindow(window);
 
-                    // Kilidi serbest bırak (kapatmadan sonra biraz bekle)
                     setTimeout(() => {
                         menuIslemde = false;
                         logEkle('✅ Menü işlemi tamamlandı, kilit açıldı', 'info');
                     }, 3000);
 
-                }, 2500); // 1000 → 2500ms
+                }, kapatmaGecikmesi);
 
             } catch (err) {
                 logEkle(`❌ Tıklama hatası: ${err.message}`, 'error');
                 menuIslemde = false;
             }
-        }, 4000); // 2000 → 4000ms
+        }, rastgeleGecikme);
     });
 
     bot.on('error', (err) => {
@@ -358,6 +380,7 @@ function baslatBot() {
         botCalisiyorMu = false;
         menuIslemde = false;
         if (donguTimeout) clearTimeout(donguTimeout);
+        bot.removeAllListeners(); // Eski listener'ları temizle
         durumGuncelle();
         zamanlanmisYenidenBaglan();
     });
@@ -368,6 +391,7 @@ function baslatBot() {
         botCalisiyorMu = false;
         menuIslemde = false;
         if (donguTimeout) clearTimeout(donguTimeout);
+        bot.removeAllListeners(); // Eski listener'ları temizle
         durumGuncelle();
         zamanlanmisYenidenBaglan();
     });
